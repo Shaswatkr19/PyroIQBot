@@ -9,6 +9,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 #create openai client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+print("✅ OpenAI Key Loaded:", os.getenv("OPENAI_API_KEY"))
 
 #/Start command
 async def start(update, context):
