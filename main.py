@@ -4,13 +4,19 @@ from openai import OpenAI
 from telegram import Update
 import os
 
+
+
+print("🚀 Starting bot...")
+print("✅ OPENAI_API_KEY loaded:", repr(os.getenv("OPENAI_API_KEY")))
+print("✅ BOT_TOKEN loaded:", repr(os.getenv("BOT_TOKEN")))
+
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 #create openai client
 client = OpenAI(api_key=OPENAI_API_KEY)
-print("✅ OpenAI Key Loaded:", repr("OPENAI_API_KEY"))
+print("✅ Loaded key:", repr("OPENAI_API_KEY"))
 
 #/Start command
 async def start(update, context):
