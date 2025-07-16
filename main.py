@@ -1,12 +1,11 @@
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
-from dotenv import load_dotenv
 from openai import OpenAI
 from telegram import Update
 import os
 
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 print("🚀 Starting bot...")
 print("✅ OPENAI_API_KEY loaded:", repr(os.getenv("OPENAI_API_KEY")))
