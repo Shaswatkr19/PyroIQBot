@@ -1,6 +1,7 @@
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from dotenv import load_dotenv
 from openai import OpenAI
+from telegram import Update
 import os
 
 load_dotenv()
@@ -8,8 +9,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 #create openai client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-print("✅ OpenAI Key Loaded:", os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=OPENAI_API_KEY)
+print("✅ OpenAI Key Loaded:", repr("OPENAI_API_KEY"))
 
 #/Start command
 async def start(update, context):
@@ -62,12 +63,12 @@ async def handle_message(update, context):
     except Exception as e:
         await update.message.reply_text(f"Oops! System thoda tilt ho gaya 😵‍💫⚙️\nError ka scene hai: {e}")    
 
-
+if __name__ == "__main__":
 #Setup bot
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("Stop", stop))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("Stop", stop))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-print("Bot connected with OpenAI and running....")
-app.run_polling()
+    print("Bot connected with OpenAI and running....")
+    app.run_polling()
