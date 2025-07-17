@@ -1,6 +1,6 @@
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
-import google.generativeai as genai
 from telegram import Update
+import google.generativeai as genai
 import os
 import time
 import asyncio
@@ -14,9 +14,8 @@ print("🚀 Starting bot...")
 print("✅ GEMINI_API_KEY loaded:", repr(os.getenv("GEMINI_API_KEY")))
 print("✅ BOT_TOKEN loaded:", repr(os.getenv("BOT_TOKEN")))
 
-# Gemini model and chat session
-model = genai.GenerativeModel("gemini-pro")
-chat = model.start_chat()  # Maintains conversation context
+# Gemini 1.5 Pro model (no chat context for now)
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 # Cooldown system to prevent spam
 user_last_active = {}
@@ -28,12 +27,12 @@ def is_user_allowed(user_id):
         return True
     return False
 
-# Get Gemini reply (with retry and chat context)
+# Get Gemini reply (with retry logic)
 async def get_gemini_reply(prompt):
     retries = 5
     for i in range(retries):
         try:
-            response = chat.send_message(prompt)
+            response = model.generate_content(prompt)
             return response.text
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
@@ -101,5 +100,5 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
 
-    print("Bot connected with Gemini AI and running....")
+    print("Bot connected with Gemini 1.5 Pro and running....")
     app.run_polling()
