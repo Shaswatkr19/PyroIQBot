@@ -1,54 +1,52 @@
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
-from openai import OpenAI
+import google.generativeai as genai
 from telegram import Update
 import os
 import time
 import asyncio
 
+# Load env variables
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+genai.configure(api_key=GEMINI_API_KEY)
 
 print("🚀 Starting bot...")
-print("✅ OPENAI_API_KEY loaded:", repr(os.getenv("OPENAI_API_KEY")))
+print("✅ GEMINI_API_KEY loaded:", repr(os.getenv("GEMINI_API_KEY")))
 print("✅ BOT_TOKEN loaded:", repr(os.getenv("BOT_TOKEN")))
 
-# Create OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
-print("✅ Loaded key:", repr("OPENAI_API_KEY"))
+# Gemini model instance
+model = genai.GenerativeModel("gemini-pro")
 
 # Cooldown system to prevent spam
 user_last_active = {}
 
 def is_user_allowed(user_id):
     now = time.time()
-    if user_id not in user_last_active or now - user_last_active[user_id] > 5:  # 5 seconds cooldown
+    if user_id not in user_last_active or now - user_last_active[user_id] > 5:
         user_last_active[user_id] = now
         return True
     return False
 
-# Retry-enabled function to get ChatGPT reply
-async def get_chatgpt_reply(prompt):
+# Get Gemini reply
+async def get_gemini_reply(prompt):
     retries = 5
     for i in range(retries):
         try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo", 
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.choices[0].message.content
+            response = model.generate_content(prompt)
+            return response.text
         except Exception as e:
-            if "429" in str(e):
-                wait_time = 2 ** i  # exponential backoff: 1, 2, 4, 8...
+            if "429" in str(e) or "quota" in str(e).lower():
+                wait_time = 2 ** i
                 print(f"Rate limit hit. Retrying in {wait_time} sec...")
                 await asyncio.sleep(wait_time)
             else:
-                return f"Error from OpenAI: {e}"
+                return f"Error from Gemini: {e}"
     return "🚫 Too many requests. Try again later."
 
 # /start command
 async def start(update, context):
     intro_text = (
-        "👋 Yo! Main ChatGPT se live connected hoon 💬 tech ka jaadu mere paas hai! Kuch bhi puchh, har sawaal ka jawab milega 😎🔥🤖\n\n"
+        "👋 Yo! Main Gemini AI se live connected hoon 🤖 Google AI ka magic lekar! Kuch bhi puchh, har sawaal ka jawab milega 💡✨\n\n"
         "🔹Try sending anything like:\n"
         "What is Python?\n"
         "Tell me a joke\n"
@@ -72,32 +70,21 @@ async def handle_message(update, context):
     user_msg = update.message.text
     user_id = update.effective_user.id
 
-    # 👋 Auto greet if first message is casual
     if user_msg.lower() in ["hi", "hello", "hey", "start", "yo"]:
-        intro_text = (
-            "👋 Yo! Main ChatGPT se live connected hoon 💬 tech ka jaadu mere paas hai! Kuch bhi puchh, har sawaal ka jawab milega 😎🔥🤖\n\n"
-            "🔹 Try sending anything like:\n"
-            "What is Python?\n"
-            "Tell me a joke\n"
-            "How to learn coding?\n\n"
-            "Type /stop when you're done. Let's go! 🚀"
-        )
-        await update.message.reply_text(intro_text)
+        await start(update, context)
         return
 
-    # ⏱️ Cooldown check
     if not is_user_allowed(user_id):
         await update.message.reply_text("😅 Thoda ruk ja bhai! 5 sec mein ek baar hi message bhejna allowed hai.")
         return
 
-    # 🔁 Get reply from OpenAI
     try:
-        bot_reply = await get_chatgpt_reply(user_msg)
+        bot_reply = await get_gemini_reply(user_msg)
         await update.message.reply_text(bot_reply)
     except Exception as e:
         await update.message.reply_text(f"Oops! System thoda tilt ho gaya 😵‍💫⚙️\nError: {e}")    
 
-# 🛠️ Error handler for Telegram-related issues
+# Telegram error handler
 async def error_handler(update, context):
     import logging
     logging.basicConfig(
@@ -105,7 +92,7 @@ async def error_handler(update, context):
     )
     logging.error(msg="Exception while handling update:", exc_info=context.error)
 
-# 🔁 MAIN: Run the bot
+# Run the bot
 if __name__ == "__main__":
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
@@ -113,5 +100,5 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
 
-    print("Bot connected with OpenAI and running....")
+    print("Bot connected with Gemini AI and running....")
     app.run_polling()
