@@ -14,8 +14,9 @@ print("🚀 Starting bot...")
 print("✅ GEMINI_API_KEY loaded:", repr(os.getenv("GEMINI_API_KEY")))
 print("✅ BOT_TOKEN loaded:", repr(os.getenv("BOT_TOKEN")))
 
-# Gemini model instance
+# Gemini model and chat session
 model = genai.GenerativeModel("gemini-pro")
+chat = model.start_chat()  # Maintains conversation context
 
 # Cooldown system to prevent spam
 user_last_active = {}
@@ -27,12 +28,12 @@ def is_user_allowed(user_id):
         return True
     return False
 
-# Get Gemini reply
+# Get Gemini reply (with retry and chat context)
 async def get_gemini_reply(prompt):
     retries = 5
     for i in range(retries):
         try:
-            response = model.generate_content(prompt)
+            response = chat.send_message(prompt)
             return response.text
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
@@ -65,7 +66,7 @@ async def stop(update, context):
     )
     await update.message.reply_text(goodbye_text)
 
-# Handle text messages
+# Handle user messages
 async def handle_message(update, context):
     user_msg = update.message.text
     user_id = update.effective_user.id
@@ -82,9 +83,9 @@ async def handle_message(update, context):
         bot_reply = await get_gemini_reply(user_msg)
         await update.message.reply_text(bot_reply)
     except Exception as e:
-        await update.message.reply_text(f"Oops! System thoda tilt ho gaya 😵‍💫⚙️\nError: {e}")    
+        await update.message.reply_text(f"Oops! System thoda tilt ho gaya 😵‍💫⚙️\nError: {e}")
 
-# Telegram error handler
+# Handle errors
 async def error_handler(update, context):
     import logging
     logging.basicConfig(
