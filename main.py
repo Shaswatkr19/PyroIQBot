@@ -72,7 +72,7 @@ async def start(update, context):
         "👋 Yo! Main Gemini AI se live connected hoon 🤖 Google AI ka magic lekar! Kuch bhi puchh, har sawaal ka jawab milega 💡✨\n\n"
         "🔹Try sending anything like:\n"
         "`What is Python?`\n"
-        "`Text me for a latest news`\n"
+        "`Text me for a latest 'News' or 'Headlines'`\n"
         "`Tell me a joke`\n"
         "`How to learn coding?`\n\n"
         "Type /stop when you're done. Let's go! 🚀"
