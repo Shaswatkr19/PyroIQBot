@@ -3,3 +3,4 @@ __pycache__/
 .env
 gemini-bot-env/
 flask.py
+app.py
