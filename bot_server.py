@@ -68,8 +68,12 @@ def webhook():
         update_data = request.get_json(force=True)
         update = Update.de_json(update_data, bot_app.bot)
         
-        # Process update asynchronously
-        asyncio.create_task(bot_app.process_update(update))
+        # Process update in new event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot_app.process_update(update))
+        loop.close()
+        
         return "OK"
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -241,12 +245,25 @@ def set_webhook():
     """Set up webhook URL (call this once after deployment)"""
     webhook_url = request.url_root + f"webhook/{BOT_TOKEN}"
     try:
-        bot_app.bot.set_webhook(webhook_url)
-        return jsonify({
-            "status": "success",
-            "message": "Webhook set successfully",
-            "webhook_url": webhook_url
-        })
+        # Synchronous webhook setup
+        import requests as req
+        telegram_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        response = req.post(telegram_api_url, data={"url": webhook_url})
+        
+        if response.status_code == 200:
+            return jsonify({
+                "status": "success",
+                "message": "Webhook set successfully",
+                "webhook_url": webhook_url,
+                "telegram_response": response.json()
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Failed to set webhook",
+                "telegram_response": response.json()
+            }), 500
+            
     except Exception as e:
         return jsonify({
             "status": "error",

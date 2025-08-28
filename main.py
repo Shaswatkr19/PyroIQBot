@@ -4,7 +4,7 @@ import asyncio
 import requests
 import threading
 import logging
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request  # Added request import
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from telegram import Update
 import google.generativeai as genai
@@ -46,6 +46,9 @@ print("✅ GEMINI_API_KEY loaded:", repr(GEMINI_API_KEY[:2] + "***"))
 print("✅ BOT_TOKEN loaded:", repr(BOT_TOKEN[:2] + "***"))
 print("✅ NEWSDATA_API_KEY loaded:", repr(NEWSDATA_API_KEY[:2] + "***"))
 
+# Global variable for bot application
+telegram_app = None
+
 # ------------------------
 # Flask App for Web Service
 # ------------------------
@@ -79,10 +82,81 @@ def bot_stats():
         "active_sessions": len([u for u, t in user_last_active.items() if time.time() - t < 300])
     })
 
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    logger.info(f"🌐 Starting Flask server on port {port}")
-    flask_app.run(host="0.0.0.0", port=port, debug=False)
+# ------------------------
+# WEBHOOK HANDLER - THIS IS THE KEY FIX
+# ------------------------
+@flask_app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    """Handle incoming Telegram webhook updates"""
+    try:
+        # Get update data
+        update_data = request.get_json(force=True)
+        logger.info(f"📥 Webhook received: {update_data.get('message', {}).get('text', 'No text')}")
+        
+        # Create Update object
+        update = Update.de_json(update_data, telegram_app.bot)
+        
+        # Process update asynchronously
+        def process_update():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(telegram_app.process_update(update))
+            except Exception as e:
+                logger.error(f"Error processing update: {e}")
+            finally:
+                loop.close()
+        
+        # Run in separate thread to avoid blocking webhook response
+        thread = threading.Thread(target=process_update)
+        thread.start()
+        
+        return "OK", 200
+        
+    except Exception as e:
+        logger.error(f"❌ Webhook error: {e}")
+        return f"Error: {str(e)}", 500
+
+@flask_app.route("/set_webhook")
+def set_webhook():
+    """Set up webhook URL - call this once after deployment"""
+    webhook_url = request.url_root + f"webhook/{BOT_TOKEN}"
+    try:
+        # Use requests to set webhook
+        telegram_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        response = requests.post(telegram_api_url, data={"url": webhook_url}, timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({
+                "status": "success",
+                "message": "Webhook set successfully!",
+                "webhook_url": webhook_url,
+                "telegram_response": result
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Failed to set webhook",
+                "response": response.json()
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Webhook setup error: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to set webhook: {e}"
+        }), 500
+
+@flask_app.route("/webhook_info")
+def webhook_info():
+    """Get current webhook information"""
+    try:
+        telegram_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo"
+        response = requests.get(telegram_api_url, timeout=10)
+        return jsonify(response.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ------------------------
 # Gemini AI Setup
@@ -113,7 +187,7 @@ async def get_gemini_reply(prompt):
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 wait_time = 2 ** i
-                print(f"⏳ Rate limit hit. Retrying in {wait_time} sec...")
+                logger.info(f"⏳ Rate limit hit. Retrying in {wait_time} sec...")
                 await asyncio.sleep(wait_time)
             else:
                 logger.error(f"Gemini error: {e}")
@@ -271,7 +345,7 @@ async def error_handler(update, context):
         )
 
 # ------------------------
-# Main Application
+# Main Application - FIXED FOR WEBHOOK MODE
 # ------------------------
 if __name__ == "__main__":
     print("=" * 60)
@@ -279,29 +353,28 @@ if __name__ == "__main__":
     print("=" * 60)
     
     try:
-        # 1️⃣ Start Flask server in background
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-        print("✅ Flask server started in background")
-        
-        # 2️⃣ Setup Telegram bot
-        app = ApplicationBuilder().token(BOT_TOKEN).build()
+        # 1️⃣ Setup Telegram bot first
+        telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
         
         # Add handlers
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("help", help_command))
-        app.add_handler(CommandHandler("stop", stop))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        telegram_app.add_handler(CommandHandler("start", start))
+        telegram_app.add_handler(CommandHandler("help", help_command))
+        telegram_app.add_handler(CommandHandler("stop", stop))
+        telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
         # Add error handler
-        app.add_error_handler(error_handler)
+        telegram_app.add_error_handler(error_handler)
         
         print("✅ Bot handlers configured")
-        print("🤖 Starting Telegram bot polling...")
+        print("🤖 Bot ready for webhook mode...")
         print("=" * 60)
         
-        # 3️⃣ Run bot (blocks main thread)
-        # app.run_polling(drop_pending_updates=True)
+        # 2️⃣ Run Flask app (this includes webhook endpoints)
+        port = int(os.environ.get("PORT", 5000))
+        logger.info(f"🌐 Starting Flask server on port {port}")
+        
+        # Run Flask directly (no separate thread needed in production)
+        flask_app.run(host="0.0.0.0", port=port, debug=False)
         
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
