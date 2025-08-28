@@ -58,20 +58,46 @@ def is_user_allowed(user_id):
 # Gemini AI reply
 # ------------------------
 async def get_gemini_reply(prompt):
-    retries = 5
+    retries = 3
     for i in range(retries):
         try:
+            logger.info(f"Sending prompt to Gemini: {prompt[:100]}...")
             resp = model.generate_content(prompt)
-            return resp.text
+            
+            # Check if response is blocked
+            if hasattr(resp, 'prompt_feedback') and resp.prompt_feedback:
+                if resp.prompt_feedback.block_reason:
+                    logger.warning(f"Prompt blocked: {resp.prompt_feedback.block_reason}")
+                    return "🚫 Sorry, I can't respond to that message due to content policies."
+            
+            # Check if response has text
+            if resp.text:
+                logger.info("Successfully got response from Gemini")
+                return resp.text
+            else:
+                logger.warning("Empty response from Gemini")
+                return "🤔 I received your message but couldn't generate a response. Try rephrasing."
+                
         except Exception as e:
-            if "429" in str(e) or "quota" in str(e).lower():
+            error_msg = str(e).lower()
+            logger.error(f"Gemini AI error (attempt {i+1}): {e}")
+            
+            if "429" in error_msg or "quota" in error_msg or "rate limit" in error_msg:
                 wait = 2 ** i
                 logger.info(f"⏳ Rate limit hit. Retrying in {wait} sec...")
                 await asyncio.sleep(wait)
+                continue
+            elif "blocked" in error_msg:
+                return "🚫 Sorry, I can't respond to that message due to content policies."
+            elif "400" in error_msg:
+                return "❌ Invalid request format. Please try again."
+            elif "403" in error_msg:
+                return "❌ API access denied. Please check API key."
             else:
-                logger.error(f"Gemini AI error: {e}")
-                return f"❌ Error: {e}"
-    return "🚫 Too many requests. Try later."
+                # For other errors, don't retry
+                return f"❌ Sorry, I'm having technical issues right now. Please try again later."
+    
+    return "🚫 Too many requests. Please try again in a minute."
 
 # ------------------------
 # Tech news fetcher
@@ -127,6 +153,8 @@ async def handle_message(update, context):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
 
+    logger.info(f"Received message from {user_name} ({user_id}): {user_msg[:100]}...")
+
     # Greetings
     if user_msg.lower() in ["hi","hello","hey","start","yo"]:
         await start(update, context)
@@ -142,19 +170,33 @@ async def handle_message(update, context):
     # News
     news_keywords = ["news","headlines","latest news","tech news","technology news"]
     if any(word in user_msg.lower() for word in news_keywords):
+        logger.info("Fetching news...")
         news = get_latest_tech_news()
         await update.message.reply_text(news, parse_mode='Markdown', disable_web_page_preview=False)
         return
 
     # AI reply
     try:
-        prompt = f"User {user_name} asks: {user_msg}\nProvide a helpful, concise response."
+        # Simple test prompt first
+        if user_msg.lower().strip() == "test":
+            await update.message.reply_text("✅ Bot is working! Send me any message for AI response.")
+            return
+            
+        prompt = f"You are a helpful AI assistant. User {user_name} asks: {user_msg}\n\nProvide a helpful, friendly response in a conversational tone."
+        logger.info("Calling Gemini API...")
         reply = await get_gemini_reply(prompt)
-        for i in range(0, len(reply), 4000):
-            await update.message.reply_text(reply[i:i+4000])
+        
+        if reply and len(reply) > 0:
+            # Split long messages
+            for i in range(0, len(reply), 4000):
+                await update.message.reply_text(reply[i:i+4000])
+                logger.info("Successfully sent reply")
+        else:
+            await update.message.reply_text("🤔 I received your message but couldn't generate a response.")
+            
     except Exception as e:
-        logger.error(f"Message error: {e}")
-        await update.message.reply_text(f"❌ Error: {str(e)[:100]}")
+        logger.error(f"Message handling error: {e}")
+        await update.message.reply_text(f"❌ Technical error occurred. Please try 'test' command first.")
 
 # Error handler
 async def error_handler(update, context):
