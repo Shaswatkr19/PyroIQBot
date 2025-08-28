@@ -105,12 +105,19 @@ async def get_gemini_reply(prompt):
 def get_latest_tech_news():
     url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&country=in&language=en&category=technology"
     try:
+        logger.info("Fetching tech news...")
         resp = requests.get(url, timeout=10)
+        logger.info(f"News API response status: {resp.status_code}")
+        
         if resp.status_code != 200:
             return f"⚠️ Failed to fetch news. Status: {resp.status_code}"
+            
         data = resp.json()
         articles = data.get("results", [])[:3]
-        if not articles: return "📰 No tech news found!"
+        
+        if not articles: 
+            return "📰 No tech news found!"
+            
         news_text = "🗞️ *Latest Tech Headlines from India:*\n\n"
         for idx, art in enumerate(articles, 1):
             title = art.get("title","No Title")
@@ -118,7 +125,10 @@ def get_latest_tech_news():
             source = art.get("source_id","Unknown")
             news_text += f"{idx}. *{title}*\n   📄 Source: {source}\n   🔗 [Read More]({link})\n\n"
         news_text += "🔄 _Auto-updated every few hours_"
+        
+        logger.info("Successfully fetched news")
         return news_text
+        
     except Exception as e:
         logger.error(f"News fetch error: {e}")
         return f"❌ Error fetching news: {e}"
@@ -217,22 +227,28 @@ def webhook():
         data = request.get_json(force=True)
         update = Update.de_json(data, telegram_app.bot)
 
-        async def process_async():
-            try:
-                await telegram_app.process_update(update)
-            except Exception as e:
-                logger.error(f"Error processing update: {e}")
-
         def process():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
-                loop.run_until_complete(process_async())
-            finally:
-                loop.close()
+                # Get or create event loop for this thread
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        raise RuntimeError("Loop is closed")
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                # Run the update processing
+                loop.run_until_complete(telegram_app.process_update(update))
+                
+            except Exception as e:
+                logger.error(f"Error processing update in thread: {e}")
         
-        threading.Thread(target=process, daemon=True).start()
+        # Start thread to process update
+        thread = threading.Thread(target=process, daemon=True)
+        thread.start()
         return "OK", 200
+        
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return "Error", 500
