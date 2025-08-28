@@ -63,16 +63,12 @@ def health():
 
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    """Handle incoming webhook updates from Telegram"""
     try:
         update_data = request.get_json(force=True)
         update = Update.de_json(update_data, bot_app.bot)
         
-        # Process update in new event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(bot_app.process_update(update))
-        loop.close()
+        # Use asyncio.run() to properly handle async update
+        asyncio.run(bot_app.process_update(update))
         
         return "OK"
     except Exception as e:
