@@ -175,16 +175,25 @@ def webhook():
         data = request.get_json(force=True)
         update = Update.de_json(data, telegram_app.bot)
 
+        async def process_async():
+            try:
+                await telegram_app.process_update(update)
+            except Exception as e:
+                logger.error(f"Error processing update: {e}")
+
         def process():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(telegram_app.process_update(update))
-            loop.close()
-        threading.Thread(target=process).start()
-        return "OK",200
+            try:
+                loop.run_until_complete(process_async())
+            finally:
+                loop.close()
+        
+        threading.Thread(target=process, daemon=True).start()
+        return "OK", 200
     except Exception as e:
         logger.error(f"Webhook error: {e}")
-        return "Error",500
+        return "Error", 500
 
 @app.route("/set_webhook")
 def set_webhook():
@@ -193,19 +202,37 @@ def set_webhook():
         r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", data={"url": url})
         return jsonify(r.json())
     except Exception as e:
-        return jsonify({"error": str(e)}),500
+        return jsonify({"error": str(e)}), 500
 
 # ------------------------
-# Main
+# Initialize Telegram App
 # ------------------------
-if __name__ == "__main__":
+async def init_telegram_app():
+    global telegram_app
     telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("help", help_command))
     telegram_app.add_handler(CommandHandler("stop", stop))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     telegram_app.add_error_handler(error_handler)
+    
+    # Initialize the application
+    await telegram_app.initialize()
+    logger.info("Telegram application initialized successfully")
 
+# ------------------------
+# Main
+# ------------------------
+if __name__ == "__main__":
+    # Initialize telegram app in event loop
+    async def setup():
+        await init_telegram_app()
+    
+    # Run initialization
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(setup())
+    
     port = int(os.environ.get("PORT", 5000))
     logger.info(f"Starting Flask server on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
