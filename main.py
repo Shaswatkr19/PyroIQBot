@@ -301,7 +301,7 @@ if __name__ == "__main__":
         print("=" * 60)
         
         # 3️⃣ Run bot (blocks main thread)
-        app.run_polling(drop_pending_updates=True)
+        # app.run_polling(drop_pending_updates=True)
         
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
